@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站净化器
 // @namespace    http://tampermonkey.net/
-// @version      1.3.1
+// @version      1.3.4
 // @description  B站净化器 是一款Tampermonkey脚本，旨在为您提供更清爽、无广告的B站浏览体验。它能自动过滤广告、推广内容，并允许您根据播放量、视频时长、UP主、标题关键词和分区等多种条件自定义隐藏视频，让您的B站首页和视频页面只显示您真正感兴趣的内容。轻松配置，即刻享受纯净B站！
 // @author       Kiyuiro
 // @match        https://*.bilibili.com/*
@@ -16,7 +16,6 @@
     function findElement(selector, timeout = 5000, interval = 50) {
         return new Promise((resolve) => {
             const start = Date.now();
-
             function check() {
                 const element = document.querySelector(selector);
                 if (element) {
@@ -27,7 +26,6 @@
                     setTimeout(check, interval);
                 }
             }
-
             check();
         });
     }
@@ -35,7 +33,6 @@
     function findElements(selector, timeout = 5000, interval = 50) {
         return new Promise((resolve) => {
             const start = Date.now();
-
             function check() {
                 const elements = document.querySelectorAll(selector) || [];
                 if (elements.length > 0) {
@@ -46,7 +43,6 @@
                     setTimeout(check, interval);
                 }
             }
-
             check();
         });
     }
@@ -266,7 +262,23 @@
             if (!config.titleList || config.titleList.length === 0) return false;
             const el = it.querySelector('.bili-video-card__info--tit')
             if (!el) return false;
-            return config.titleList.find(title => el.title.includes(title));
+            return config.titleList.find(pattern => {
+                const text = el.title;
+                const tokens = pattern.trim().split(/\s+/);
+                return tokens.every(token => {
+                    if (token.includes('|')) {
+                        // 逻辑“或”
+                        return token.split('|').some(word => text.includes(word));
+                    } else if (token.startsWith('!')) {
+                        // 逻辑“非”
+                        const word = token.slice(1);
+                        return !text.includes(word);
+                    } else {
+                        // 逻辑“与”
+                        return text.includes(token);
+                    }
+                });
+            });
         }
         // 分区过滤
         const filterByPart = (it) => {
@@ -400,7 +412,12 @@
                     <label for="upList">UP过滤：</label>
                     <textarea id="upList" placeholder="每行输入一个 UP 名称"></textarea>
                     
-                    <label for="titleList">标题过滤：</label>
+                    <label for="titleList" style="margin-bottom: 0">标题过滤(支持下列匹配方式)：</label>
+                    <span class="block" style="font-size: 12px; margin-bottom: 10px; color: rgba(0,0,0,0.5);">
+                    A B：必须同时包含 A 和 B（与）<br\>
+                    A|B：包含 A 或 B 其中一个即可（或）<br\>
+                    !A：不能包含 A（非）
+                    </span>
                     <textarea id="titleList" placeholder="每行输入一个标题"></textarea>
                     
                     <label for="partList">分区过滤(填写ALL表示所有分区)：</label>
@@ -534,7 +551,7 @@
         }
 
         /* 隐藏的元素 */
-        .config-window-container .hidden {
+        .hidden {
             display: none !important; /* 使用 !important 确保覆盖 Tailwind 的 display */
         }
     `;
@@ -626,8 +643,7 @@
             });
 
             // 注入配置按钮，在头像下面
-            const interval = setInterval(async () => {
-                const links = await findElement('.links-item', 1000);
+            findElement('.links-item', 999999).then(links => {
                 if (links) {
                     const configButton = document.createElement('div');
                     configButton.className = 'single-link-item';
@@ -639,9 +655,9 @@
                         loadConfigData(JSON.parse(localStorage.getItem('BiliFilterConfig')));
                         biliFilterConfigOverlay.classList.remove('hidden'); // 显示配置窗口
                     });
-                    clearInterval(interval)
                 }
-            }, 1200);
+            })
+
         };
     }
 
